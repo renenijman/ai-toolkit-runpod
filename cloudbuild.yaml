@@ -9,7 +9,7 @@ steps:
   args:
   - 'tag'
   - 'gcr.io/$PROJECT_ID/ai-toolkit-complete:latest'
-  - 'YOURUSERNAME/ai-toolkit-complete:latest'
+  - 'renenijman/ai-toolkit-complete:latest'
 - name: 'gcr.io/cloud-builders/docker'
   entrypoint: 'bash'
   args:
