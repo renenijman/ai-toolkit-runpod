@@ -59,13 +59,19 @@ RUN /opt/ai-toolkit/venv/bin/pip install --no-cache-dir \
     git+https://github.com/huggingface/diffusers@363d1ab7e24c5ed6c190abb00df66d9edb74383b
 
 # Create a startup script that copies files to workspace
-RUN echo '#!/bin/bash\n\
-if [ ! -d "/workspace/ai-toolkit" ]; then\n\
-    echo "Copying ai-toolkit to workspace..."\n\
-    cp -r /opt/ai-toolkit /workspace/\n\
-    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"\n\
-fi\n\
-exec "$@"' > /opt/copy-to-workspace.sh && chmod +x /opt/copy-to-workspace.sh
+RUN cat > /opt/copy-to-workspace.sh << 'EOF'
+#!/bin/bash
+if [ ! -d "/workspace/ai-toolkit" ]; then
+    echo "Copying ai-toolkit to workspace..."
+    cp -r /opt/ai-toolkit /workspace/
+    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"
+fi
+# Execute the original command
+exec "$@"
+EOF
+
+# Make the script executable
+RUN chmod +x /opt/copy-to-workspace.sh
 
 # Set the script as entrypoint but preserve original CMD
 ENTRYPOINT ["/opt/copy-to-workspace.sh"]
