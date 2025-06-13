@@ -58,17 +58,8 @@ RUN /opt/ai-toolkit/venv/bin/pip install --no-cache-dir \
     git+https://github.com/jaretburkett/easy_dwpose.git \
     git+https://github.com/huggingface/diffusers@363d1ab7e24c5ed6c190abb00df66d9edb74383b
 
-# Create a startup script that copies files to workspace
-RUN cat > /opt/copy-to-workspace.sh << 'EOF'
-#!/bin/bash
-if [ ! -d "/workspace/ai-toolkit" ]; then
-    echo "Copying ai-toolkit to workspace..."
-    cp -r /opt/ai-toolkit /workspace/
-    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"
-fi
-# Execute the original command
-exec "$@"
-EOF
+# Create a startup script using printf (more reliable than echo with newlines)
+RUN printf '#!/bin/bash\nif [ ! -d "/workspace/ai-toolkit" ]; then\n    echo "Copying ai-toolkit to workspace..."\n    cp -r /opt/ai-toolkit /workspace/\n    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"\nfi\nexec "$@"\n' > /opt/copy-to-workspace.sh
 
 # Make the script executable
 RUN chmod +x /opt/copy-to-workspace.sh
