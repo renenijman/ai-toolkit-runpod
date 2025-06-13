@@ -77,8 +77,8 @@ RUN echo 'if [ -d "/workspace/ai-toolkit/venv" ]; then' >> /root/.bashrc && \
 # Create a simple copy script that runs once
 RUN printf '#!/bin/bash\nif [ ! -d "/workspace/ai-toolkit" ]; then\n    echo "Copying ai-toolkit to workspace..."\n    cp -r /opt/ai-toolkit /workspace/\n    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"\nfi\n' > /opt/copy-to-workspace.sh && chmod +x /opt/copy-to-workspace.sh
 
-# Create a script that runs the copy and then calls original start.sh
-RUN printf '#!/bin/bash\n# Copy ai-toolkit if needed\n/opt/copy-to-workspace.sh\n\n# Call the original RunPod start script\nexec /start.sh "$@"\n' > /opt/runpod-start.sh && chmod +x /opt/runpod-start.sh
+# Create a script that runs the copy, starts without-password Jupyter, then calls original start.sh
+RUN printf '#!/bin/bash\n# Copy ai-toolkit if needed\n/opt/copy-to-workspace.sh\n\n# Remove any Jupyter token environment variables\nunset JUPYTER_TOKEN\nunset JUPYTER_PASSWORD\n\n# Start a background process to fix Jupyter after RunPod starts it\n(\n  sleep 5\n  echo "Restarting Jupyter without password..."\n  pkill -f jupyter-lab\n  sleep 2\n  nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token="" --ServerApp.password="" --ServerApp.allow_origin="*" --ServerApp.base_url=/ > /tmp/jupyter.log 2>&1 &\n  echo "Jupyter Lab started without password!"\n) &\n\n# Call the original RunPod start script\nexec /start.sh "$@"\n' > /opt/runpod-start.sh && chmod +x /opt/runpod-start.sh
 
 # Use our script as the entrypoint
 ENTRYPOINT ["/opt/runpod-start.sh"]
