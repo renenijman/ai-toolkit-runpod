@@ -74,14 +74,14 @@ RUN echo 'if [ -d "/workspace/ai-toolkit/venv" ]; then' >> /root/.bashrc && \
     echo '    echo "✅ ai-toolkit virtual environment activated!"' >> /root/.bashrc && \
     echo 'fi' >> /root/.bashrc
 
-# Create enhanced startup script
-RUN printf '#!/bin/bash\nif [ ! -d "/workspace/ai-toolkit" ]; then\n    echo "Copying ai-toolkit to workspace..."\n    cp -r /opt/ai-toolkit /workspace/\n    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"\nfi\n\n# Start Jupyter Lab without password\necho "Starting Jupyter Lab..."\nnohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token="" --ServerApp.password="" --ServerApp.allow_origin="*" --ServerApp.base_url=/ &\n\n# Execute the original command\nexec "$@"\n' > /opt/copy-to-workspace.sh
+# Create a simple copy script that runs once
+RUN printf '#!/bin/bash\nif [ ! -d "/workspace/ai-toolkit" ]; then\n    echo "Copying ai-toolkit to workspace..."\n    cp -r /opt/ai-toolkit /workspace/\n    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"\nfi\n' > /opt/copy-to-workspace.sh && chmod +x /opt/copy-to-workspace.sh
 
-# Make the script executable
-RUN chmod +x /opt/copy-to-workspace.sh
+# Create a script that runs the copy and then calls original start.sh
+RUN printf '#!/bin/bash\n# Copy ai-toolkit if needed\n/opt/copy-to-workspace.sh\n\n# Call the original RunPod start script\nexec /start.sh "$@"\n' > /opt/runpod-start.sh && chmod +x /opt/runpod-start.sh
 
-# Set the script as entrypoint but preserve original CMD
-ENTRYPOINT ["/opt/copy-to-workspace.sh"]
+# Use our script as the entrypoint
+ENTRYPOINT ["/opt/runpod-start.sh"]
 
 # Back to workspace
 WORKDIR /workspace
