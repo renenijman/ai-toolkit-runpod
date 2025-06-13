@@ -19,7 +19,7 @@ steps:
 - name: 'gcr.io/cloud-builders/docker'
   args:
   - 'push'
-  - 'YOURUSERNAME/ai-toolkit-complete:latest'
+  - 'renenijman/ai-toolkit-complete:latest'
 
 availableSecrets:
   secretManager:
