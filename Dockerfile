@@ -31,6 +31,107 @@ RUN pip install --no-cache-dir \
     git+https://github.com/jaretburkett/easy_dwpose.git \
     git+https://github.com/huggingface/diffusers@363d1ab7e24c5ed6c190abb00df66d9edb74383b
 
+# Install huggingface_hub for model downloading
+RUN pip install --no-cache-dir huggingface_hub
+
+# Set up Hugging Face cache directory
+ENV HF_HOME=/opt/huggingface_cache
+ENV TRANSFORMERS_CACHE=/opt/huggingface_cache
+ENV HF_DATASETS_CACHE=/opt/huggingface_cache
+
+# Create cache directory
+RUN mkdir -p /opt/huggingface_cache
+
+# Pre-download all models and components used in training
+RUN python -c "
+import os
+import sys
+import time
+from huggingface_hub import snapshot_download
+from pathlib import Path
+
+def download_with_retry(repo_id, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            print(f'📥 Downloading {repo_id} (attempt {attempt + 1}/{max_retries})...')
+            snapshot_download(
+                repo_id=repo_id,
+                cache_dir='/opt/huggingface_cache',
+                resume_download=True,
+                local_files_only=False
+            )
+            print(f'✅ {repo_id} downloaded successfully!')
+            return True
+        except Exception as e:
+            print(f'⚠️ Attempt {attempt + 1} failed for {repo_id}: {e}')
+            if attempt < max_retries - 1:
+                time.sleep(10)
+            else:
+                print(f'❌ FATAL: Failed to download {repo_id} after {max_retries} attempts')
+                sys.exit(1)  # HARD FAIL THE BUILD
+    return False
+
+# Download both models (exactly matching your config)
+print('🚀 Starting model pre-download process...')
+download_with_retry('HiDream-ai/HiDream-I1-Full')
+download_with_retry('unsloth/Meta-Llama-3.1-8B-Instruct')
+
+print('🎉 All models downloaded - now verifying...')
+
+# STRICT VERIFICATION - Build fails if ANY of this fails
+try:
+    from transformers import AutoTokenizer, AutoConfig
+    
+    # Test 1: Llama model offline loading
+    print('🔍 Test 1: Loading Llama tokenizer offline...')
+    tokenizer = AutoTokenizer.from_pretrained(
+        'unsloth/Meta-Llama-3.1-8B-Instruct',
+        cache_dir='/opt/huggingface_cache',
+        local_files_only=True  # MUST work offline
+    )
+    print('✅ Test 1 PASSED')
+    
+    # Test 2: Llama config offline loading  
+    print('🔍 Test 2: Loading Llama config offline...')
+    llama_config = AutoConfig.from_pretrained(
+        'unsloth/Meta-Llama-3.1-8B-Instruct',
+        cache_dir='/opt/huggingface_cache', 
+        local_files_only=True  # MUST work offline
+    )
+    print('✅ Test 2 PASSED')
+    
+    # Test 3: HiDream config offline loading
+    print('🔍 Test 3: Loading HiDream config offline...')
+    hidream_config = AutoConfig.from_pretrained(
+        'HiDream-ai/HiDream-I1-Full',
+        cache_dir='/opt/huggingface_cache',
+        local_files_only=True  # MUST work offline
+    )
+    print('✅ Test 3 PASSED')
+    
+    # Test 4: Check cache size
+    cache_path = Path('/opt/huggingface_cache')
+    if cache_path.exists():
+        total_size = sum(f.stat().st_size for f in cache_path.rglob('*') if f.is_file())
+        size_gb = total_size / (1024**3)
+        print(f'📊 Cache size: {size_gb:.1f} GB')
+        
+        if size_gb < 25:  # Should be at least 25GB for both models
+            print(f'❌ FATAL: Cache too small ({size_gb:.1f} GB), models not fully cached')
+            sys.exit(1)
+    else:
+        print('❌ FATAL: Cache directory does not exist')
+        sys.exit(1)
+    
+    print('🎉 ALL VERIFICATION TESTS PASSED!')
+    print('💡 Training will start instantly without downloads')
+    
+except Exception as e:
+    print(f'❌ FATAL VERIFICATION FAILURE: {e}')
+    print('🚨 BUILD MUST FAIL - models not properly cached')
+    sys.exit(1)  # HARD FAIL THE BUILD
+"
+
 # Verify critical packages are installed
 RUN python -c "import torch; import transformers; import diffusers; print('✅ All packages successfully installed')"
 
@@ -44,16 +145,19 @@ RUN jupyter lab --generate-config && \
     echo "c.ServerApp.allow_origin = '*'" >> /root/.jupyter/jupyter_lab_config.py && \
     echo "c.ServerApp.ip = '0.0.0.0'" >> /root/.jupyter/jupyter_lab_config.py
 
-# Add venv activation to bashrc with proper PATH
+# Add venv activation to bashrc with proper PATH and HF cache
 RUN echo 'if [ -d "/workspace/ai-toolkit/venv" ]; then' >> /root/.bashrc && \
     echo '    export PATH="/workspace/ai-toolkit/venv/bin:$PATH"' >> /root/.bashrc && \
+    echo '    export HF_HOME=/opt/huggingface_cache' >> /root/.bashrc && \
+    echo '    export TRANSFORMERS_CACHE=/opt/huggingface_cache' >> /root/.bashrc && \
+    echo '    export HF_DATASETS_CACHE=/opt/huggingface_cache' >> /root/.bashrc && \
     echo '    source /workspace/ai-toolkit/venv/bin/activate' >> /root/.bashrc && \
     echo '    echo "✅ ai-toolkit virtual environment activated!"' >> /root/.bashrc && \
     echo '    echo "💡 Use: python run.py config.yaml"' >> /root/.bashrc && \
     echo 'fi' >> /root/.bashrc
 
 # Create a simple copy script that runs once
-RUN printf '#!/bin/bash\nif [ ! -d "/workspace/ai-toolkit" ]; then\n    echo "Copying ai-toolkit to workspace..."\n    cp -r /opt/ai-toolkit /workspace/\n    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"\nfi\n' > /opt/copy-to-workspace.sh && chmod +x /opt/copy-to-workspace.sh
+RUN printf '#!/bin/bash\nif [ ! -d "/workspace/ai-toolkit" ]; then\n    echo "Copying ai-toolkit to workspace..."\n    cp -r /opt/ai-toolkit /workspace/\n    echo "Done! ai-toolkit is ready in /workspace/ai-toolkit"\nfi\n\n# Set up HF cache environment for runtime\nexport HF_HOME=/opt/huggingface_cache\nexport TRANSFORMERS_CACHE=/opt/huggingface_cache\nexport HF_DATASETS_CACHE=/opt/huggingface_cache\n' > /opt/copy-to-workspace.sh && chmod +x /opt/copy-to-workspace.sh
 
 # Create a script that runs the copy, starts without-password Jupyter, then calls original start.sh
 RUN printf '#!/bin/bash\n# Copy ai-toolkit if needed\n/opt/copy-to-workspace.sh\n\n# Remove any Jupyter token environment variables\nunset JUPYTER_TOKEN\nunset JUPYTER_PASSWORD\n\n# Start a background process to fix Jupyter after RunPod starts it\n(\n  sleep 5\n  echo "Restarting Jupyter without password..."\n  pkill -f jupyter-lab\n  sleep 2\n  nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token="" --ServerApp.password="" --ServerApp.allow_origin="*" --ServerApp.base_url=/ > /tmp/jupyter.log 2>&1 &\n  echo "Jupyter Lab started without password!"\n) &\n\n# Call the original RunPod start script\nexec /start.sh "$@"\n' > /opt/runpod-start.sh && chmod +x /opt/runpod-start.sh
