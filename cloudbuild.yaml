@@ -5,31 +5,14 @@ steps:
   - '-t'
   - 'gcr.io/$PROJECT_ID/ai-toolkit-complete:latest'
   - '.'
-  timeout: '10800s'  # 3 hours for the build step (model downloads take time)
-- name: 'gcr.io/cloud-builders/docker'
-  args:
-  - 'tag'
-  - 'gcr.io/$PROJECT_ID/ai-toolkit-complete:latest'
-  - 'renenijman/ai-toolkit-complete:latest'
-- name: 'gcr.io/cloud-builders/docker'
-  entrypoint: 'bash'
-  args:
-  - '-c'
-  - 'echo $DOCKERHUB_TOKEN | docker login --username $DOCKERHUB_USERNAME --password-stdin'
-  secretEnv: ['DOCKERHUB_TOKEN', 'DOCKERHUB_USERNAME']
+  timeout: '10800s'
 - name: 'gcr.io/cloud-builders/docker'
   args:
   - 'push'
-  - 'renenijman/ai-toolkit-complete:latest'
-  timeout: '7200s'  # 2 hours for push (was 1 hour, now 2 hours)
-availableSecrets:
-  secretManager:
-  - versionName: projects/$PROJECT_ID/secrets/dockerhub-token/versions/latest
-    env: 'DOCKERHUB_TOKEN'
-  - versionName: projects/$PROJECT_ID/secrets/dockerhub-username/versions/latest
-    env: 'DOCKERHUB_USERNAME'
+  - 'gcr.io/$PROJECT_ID/ai-toolkit-complete:latest'
+  timeout: '1800s'
 options:
-  machineType: 'E2_HIGHCPU_32'  # Upgraded machine for faster builds
-  diskSizeGb: '300'              # Increased disk space for large models
+  machineType: 'E2_HIGHCPU_32'
+  diskSizeGb: '300'
   logging: 'CLOUD_LOGGING_ONLY'
-timeout: '18000s'                # 5 hours total timeout (was 4 hours)
+timeout: '12600s'
